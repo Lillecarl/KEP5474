@@ -87,13 +87,29 @@ hold. The node is CRI-O with the `nsdelegate` mount option taken off;
 Two observations from this run are review material for the PRs:
 
 1. CRI-O honours the annotation with no `nsdelegate` check anywhere;
-   the KEP field's own gate is the only thing standing. If the
-   annotation is meant to survive the KEP, it needs the same check.
-2. The kubelet lists `CgroupOptions` in `declaredFeatures` on a node
-   whose hierarchy lacks `nsdelegate`, so the scheduler will route
-   opted-in pods there and the refusal arrives late, at container
-   creation, as `CreateContainerConfigError`. The KEP text has the
-   kubelet check the host prerequisites at startup.
+   the KEP field's own gate is the only thing standing. The annotation
+   is a deliberate stopgap behind an opt-in (`allowed_annotations`) and
+   no attack surface -- the ask is only that CRI-O retire it once the
+   KEP lands, the way containerd supersedes its `cgroup_writable`
+   config.
+2. The kubelet's declaration of `CgroupOptions` is a snapshot taken
+   once, at container-manager init, from the cgroup2 superblock
+   options. On this node systemd mounted the hierarchy with
+   `nsdelegate` (CRI-O's startup log agrees: *cgroup nsdelegate is
+   true*), the kubelet read it true and declared -- and within the
+   boot window the flag left the superblock again, raw `mount(2)`,
+   before any pod ran: CRI-O's per-create re-check caught the cleared
+   state and refused the field pod. Steady-state remounts stick, so
+   the clearing is a boot-window event, and the kubelet's declaration
+   is stale within a minute of boot. The KEP documents the one-shot
+   read as accepted ("if nsdelegate is removed later, the runtime
+   fails container creation"), but here removal happens before any pod
+   can land, so the scheduler-exclusion layer the KEP advertises never
+   engages and the runtime refusal is the only real gate. The review
+   ask: re-check `nsdelegate` at declaration time (the check is one
+   mountinfo parse), or find what clears the flag during boot -- if
+   the kubelet's own setup does it, that is the root bug and the stale
+   declaration is its symptom.
 
 ## Running it
 
