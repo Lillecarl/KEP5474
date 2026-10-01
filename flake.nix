@@ -17,7 +17,12 @@
   inputs = {
     # Tarball sources: a branch fetched as an archive.  No git graph, no
     # submodules; the cheapest fetch a flake does.
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    #
+    # The nixpkgs rev is the nixos-unstable snapshot the suite's own
+    # <nixpkgs> tracks, and not the branch head on purpose: the suite's
+    # derivations are proven against this rev, and a moving input would
+    # test a different nixpkgs from one day to the next.
+    nixpkgs.url = "github:NixOS/nixpkgs/aff8a0b28396750446e5537a96461bc4facdb287";
     # The test runner both tests drive.  The non-flake entry, default.nix,
     # points this at the same repository's checkout.
     vivarium.url = "github:Lillecarl/vivarium";
