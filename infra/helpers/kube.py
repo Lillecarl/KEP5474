@@ -15,8 +15,9 @@ shared ledger.
 
 from __future__ import annotations
 
+import inspect
 import json
-import os
+import re
 import time
 from typing import TYPE_CHECKING
 
@@ -31,6 +32,24 @@ if TYPE_CHECKING:
 NAMESPACE = "default"
 
 
+def _phase() -> str:
+    """The phase asking for the record, from the module that called.
+
+    The runner imports each phase script as `uml_phase_<stem>` and keeps
+    them loaded for the whole process, so the current one is only on the
+    stack: the caller's module name is it.  The stem is the script's
+    store path -- `/nix/store/<32 chars>-<name>.py` -- so the hash goes,
+    and the name is the phase's.
+    """
+    for frame in inspect.stack():
+        name = frame.frame.f_globals.get("__name__", "")
+        if name.startswith("uml_phase_"):
+            stem = name.removeprefix("uml_phase_")
+            stem = re.sub(r"^[a-z0-9]{32}-", "", stem)
+            return stem.replace("_", "-")
+    return ""
+
+
 def _record(cp: Machine, kind: str, **fields: object) -> None:
     """One evidence line, into the run's artifacts if there are any."""
     if cp.artifacts is None:
@@ -39,9 +58,7 @@ def _record(cp: Machine, kind: str, **fields: object) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     record = {
         "time": time.strftime("%H:%M:%S"),
-        # pytest names the running test after the phase script; on a
-        # `ctl exec` probe there is none.
-        "phase": os.environ.get("PYTEST_CURRENT_TEST", "").replace(" (call)", ""),
+        "phase": _phase(),
         "kind": kind,
         **fields,
     }
