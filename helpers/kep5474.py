@@ -75,6 +75,7 @@ def pod(
     node: str | None = None,
     os_name: str | None = None,
     extra_spec: str = "",
+    annotations: dict[str, str] | None = None,
 ) -> str:
     head = (
         "apiVersion: v1\n"
@@ -83,6 +84,10 @@ def pod(
         f"  name: {name}\n"
         f"  namespace: {namespace}\n"
     )
+    if annotations:
+        head += "  annotations:\n" + "".join(
+            f'    {key}: "{value}"\n' for key, value in annotations.items()
+        )
     spec = "spec:\n  restartPolicy: Never\n"
     if node is not None:
         spec += f"  nodeName: {node}\n"

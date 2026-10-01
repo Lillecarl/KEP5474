@@ -149,7 +149,7 @@ let
   */
   nodeWith =
     cri:
-    { ... }:
+    { lib, pkgs, ... }:
     {
       imports = [ (vivarium + "/modules/k8s.nix") ];
       services.vivarium-k8s = {
@@ -168,6 +168,30 @@ let
         # Nothing here resolves a name, and a sandboxed CoreDNS spends the
         # run timing out against an upstream it cannot reach.
         skipAddons = [ "coredns" ];
+      };
+      # CRI-O's pre-KEP route to writable cgroups: a pod annotation.
+      # Annotations outside the runtime handler's allowed_annotations
+      # list are stripped before CRI-O reads them, and this one is not
+      # on the default list -- so without this line the annotation is a
+      # no-op. The runc handler is the default_runtime.
+      virtualisation.cri-o.settings.crio.runtime.runtimes.runc.allowed_annotations =
+        lib.mkIf (cri == "crio") [ "cgroup2-mount-hierarchy-rw.crio.io" ];
+      # The KEP field's CRI-O path refuses to create a writable-cgroup
+      # container unless the node's cgroup2 hierarchy is mounted with
+      # nsdelegate (the PR checks and errors).  systemd mounts cgroup2
+      # without it, and a remount cannot add it: the kernel parses
+      # nsdelegate only at the superblock's first mount and ignores the
+      # option on remount -- a remount unit runs, exits 0, and the
+      # option is still absent.  So stage 2 mounts the hierarchy
+      # itself, before systemd has a chance: activation runs after
+      # stage 2 mounts /sys and before it execs systemd, and systemd
+      # finds the hierarchy already mounted and keeps it.
+      system.activationScripts."cgroup2-nsdelegate" = lib.mkIf (cri == "crio") {
+        text = ''
+          if ! ${pkgs.util-linux}/bin/mountpoint -q /sys/fs/cgroup; then
+            ${pkgs.util-linux}/bin/mount -t cgroup2 -o nsdelegate none /sys/fs/cgroup
+          fi
+        '';
       };
       vivarium = {
         memory = "2560M";
@@ -239,9 +263,13 @@ in
           script = ./phases/checks/runtime_behaviour.py;
           after = [ "api" ];
         };
+        annotation = {
+          script = ./phases/checks/annotation.py;
+          after = [ "runtime-behaviour" ];
+        };
         limits = {
           script = ./phases/checks/limits.py;
-          after = [ "runtime-behaviour" ];
+          after = [ "annotation" ];
         };
         security = {
           script = ./phases/checks/security.py;
