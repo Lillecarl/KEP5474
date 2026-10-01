@@ -30,6 +30,11 @@ let
   infra = import ../infra { inherit pkgs vivarium; };
   inherit (infra) pkgs' vivariumLib nodeWith;
 
+  # Pure evaluation -- a flake, a `--pure-eval` run -- reads no
+  # environment, so the backend knob answered its default.  The cluster
+  # phase announces it.
+  pureEval = !builtins.hasAttr "currentSystem" builtins;
+
   /*
     The system under test.
 
@@ -365,6 +370,7 @@ in
       nodes.cp = node;
 
       settings = {
+        inherit pureEval;
         imageName = "nixos-test:latest";
         nodeName = "cp";
         uid = 4242;

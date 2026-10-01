@@ -18,6 +18,12 @@ async def test(vms: Machines) -> None:
         f" uid {vms.settings['uid']}",
         flush=True,
     )
+    if vms.settings.get("pureEval"):
+        print(
+            "[nixos-in-pod] pure evaluation: the environment was not read;"
+            " an env knob such as NIXOS_IN_POD_BACKEND needs --impure",
+            flush=True,
+        )
     cp = await bring_up(vms, addons=(KUBE_PROXY,))
 
     # What a container can and cannot do here, for the record.  A

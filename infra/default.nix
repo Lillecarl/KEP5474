@@ -17,33 +17,44 @@
   # The vivarium checkout to build against.  `$HOME/Code/nixidae/vivarium`
   # by default, written relative to this file.
   vivarium ? ../nixidae/vivarium,
+  /*
+    The sources under test.  The defaults are the PR commits the tests
+    were written against; each can be repointed without editing anything
+    else:
+
+    - another commit: `kubernetesSrc = pkgs.fetchFromGitHub { ... rev = ...; }`
+    - a local checkout: `kubernetesSrc = /home/me/kubernetes` -- the tree
+      is taken as it is, dirt included
+    - a flake input: pass the input itself (`kubernetes-src`), which
+      carries both the tree and its locked `rev`
+
+    A local checkout has no `.rev`; the version strings below fall back
+    to `local` for it.
+  */
+  kubernetesSrc ? pkgs.fetchFromGitHub {
+    owner = "kubernetes";
+    repo = "kubernetes";
+    rev = "7811d7b62963ce2b8a8c1e03dd7fd70251107092";
+    hash = "sha256-wn9y3JjLJH88nCr35fMHjYNguA+XczvD93s22Dh+rpg=";
+  },
+  containerdSrc ? pkgs.fetchFromGitHub {
+    owner = "containerd";
+    repo = "containerd";
+    rev = "1ad78b552ca716aa3d2dff09005fcf149f3722c9";
+    hash = "sha256-us9WZSSUuxzXHjtJ13iDazRQqsLfkShuN4wpBTHw5XU=";
+  },
+  criOSrc ? pkgs.fetchFromGitHub {
+    owner = "cri-o";
+    repo = "cri-o";
+    rev = "c297e202b5400538dcb034fd0dcd398be90b420d";
+    hash = "sha256-pDZ+raxt4k7TrtevAC5RXt8H8k72/ABhATvFJGbMCKs=";
+  },
 }:
 
 let
   lib = pkgs.lib;
 
   # ── the PRs ────────────────────────────────────────────────────────
-
-  kubernetesSrc = pkgs.fetchFromGitHub {
-    owner = "kubernetes";
-    repo = "kubernetes";
-    rev = "7811d7b62963ce2b8a8c1e03dd7fd70251107092";
-    hash = "sha256-wn9y3JjLJH88nCr35fMHjYNguA+XczvD93s22Dh+rpg=";
-  };
-
-  containerdSrc = pkgs.fetchFromGitHub {
-    owner = "containerd";
-    repo = "containerd";
-    rev = "1ad78b552ca716aa3d2dff09005fcf149f3722c9";
-    hash = "sha256-us9WZSSUuxzXHjtJ13iDazRQqsLfkShuN4wpBTHw5XU=";
-  };
-
-  criOSrc = pkgs.fetchFromGitHub {
-    owner = "cri-o";
-    repo = "cri-o";
-    rev = "c297e202b5400538dcb034fd0dcd398be90b420d";
-    hash = "sha256-pDZ+raxt4k7TrtevAC5RXt8H8k72/ABhATvFJGbMCKs=";
-  };
 
   # nixpkgs' Kubernetes is 1.37.  The PR is against master, which needs Go
   # 1.27 -- nixpkgs' `go` is 1.26, and `buildGoLatestModule` is 1.27.
@@ -76,7 +87,7 @@ let
       if lib.hasPrefix "VERSION=" flag then
         "VERSION=v2.3.5"
       else if lib.hasPrefix "REVISION=" flag then
-        "REVISION=${containerdSrc.rev}"
+        "REVISION=${containerdSrc.rev or "local"}"
       else
         flag
     ) old.makeFlags;

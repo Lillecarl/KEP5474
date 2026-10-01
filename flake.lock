@@ -1,5 +1,56 @@
 {
   "nodes": {
+    "containerd-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1790362069,
+        "narHash": "sha256-us9WZSSUuxzXHjtJ13iDazRQqsLfkShuN4wpBTHw5XU=",
+        "ref": "refs/heads/main",
+        "rev": "1ad78b552ca716aa3d2dff09005fcf149f3722c9",
+        "revCount": 17121,
+        "type": "git",
+        "url": "https://github.com/containerd/containerd"
+      },
+      "original": {
+        "rev": "1ad78b552ca716aa3d2dff09005fcf149f3722c9",
+        "type": "git",
+        "url": "https://github.com/containerd/containerd"
+      }
+    },
+    "cri-o-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1790698934,
+        "narHash": "sha256-pDZ+raxt4k7TrtevAC5RXt8H8k72/ABhATvFJGbMCKs=",
+        "ref": "refs/heads/main",
+        "rev": "c297e202b5400538dcb034fd0dcd398be90b420d",
+        "revCount": 10960,
+        "type": "git",
+        "url": "https://github.com/cri-o/cri-o"
+      },
+      "original": {
+        "rev": "c297e202b5400538dcb034fd0dcd398be90b420d",
+        "type": "git",
+        "url": "https://github.com/cri-o/cri-o"
+      }
+    },
+    "kubernetes-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1790362345,
+        "narHash": "sha256-r1YZZIlr8ZSh539emlA15EcvejpbYMdPrSbnOk4J7Dk=",
+        "ref": "refs/heads/master",
+        "rev": "7811d7b62963ce2b8a8c1e03dd7fd70251107092",
+        "revCount": 141519,
+        "type": "git",
+        "url": "https://github.com/kubernetes/kubernetes"
+      },
+      "original": {
+        "rev": "7811d7b62963ce2b8a8c1e03dd7fd70251107092",
+        "type": "git",
+        "url": "https://github.com/kubernetes/kubernetes"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1789073787,
@@ -34,6 +85,9 @@
     },
     "root": {
       "inputs": {
+        "containerd-src": "containerd-src",
+        "cri-o-src": "cri-o-src",
+        "kubernetes-src": "kubernetes-src",
         "nixpkgs": "nixpkgs",
         "vivarium": "vivarium"
       }

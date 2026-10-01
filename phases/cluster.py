@@ -20,6 +20,12 @@ async def test(vms: Machines) -> None:
         f" cri {vms.settings['cri']}, busybox {vms.settings['workloadImage']}",
         flush=True,
     )
+    if vms.settings.get("pureEval"):
+        print(
+            "[kep-5474] pure evaluation: the environment was not read;"
+            " an env knob such as KEP5474_CRI needs --impure",
+            flush=True,
+        )
     cp = await bring_up(vms, addons=(KUBE_PROXY,))
 
     # The host prerequisite the KEP names, printed for the record.  A

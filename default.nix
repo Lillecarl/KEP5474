@@ -24,10 +24,36 @@
   # The vivarium checkout to build against.  `$HOME/Code/nixidae/vivarium`
   # by default, written relative to this file.
   vivarium ? ../nixidae/vivarium,
+  /*
+    The sources under test, forwarded to `infra/`.  `null` keeps that
+    file's pinned default; a value -- another commit, a local checkout,
+    a flake input -- repoints it.  See infra/default.nix and the README's
+    "Pointing the sources elsewhere".
+  */
+  kubernetesSrc ? null,
+  containerdSrc ? null,
+  criOSrc ? null,
 }:
 
 let
-  infra = import ./infra { inherit pkgs vivarium; };
+  lib = pkgs.lib;
+
+  /*
+    Whether this evaluation could read the environment.  In pure
+    evaluation -- a flake, a `--pure-eval` invocation -- `builtins`
+    has no `currentSystem`, and every knob answered `default`.  The
+    cluster phase announces it, so a run whose operator set
+    `KEP5474_CRI=crio` without `--impure` does not silently test
+    containerd.
+  */
+  pureEval = !builtins.hasAttr "currentSystem" builtins;
+
+  infra = import ./infra (
+    { inherit pkgs vivarium; }
+    // lib.filterAttrs (_: src: src != null) {
+      inherit kubernetesSrc containerdSrc criOSrc;
+    }
+  );
   inherit (infra) pkgs' vivariumLib nodeWith;
 
   nodeConfigOf =
@@ -71,6 +97,7 @@ in
 
       settings = {
         inherit cri;
+        inherit pureEval;
         inherit (nodeConfig.services.vivarium-k8s) workloadImage;
         kubernetesVersion = pkgs'.kubernetes.version;
         featureName = "CgroupOptions";

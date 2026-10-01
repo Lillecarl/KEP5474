@@ -77,8 +77,52 @@ override one:
     KEP5474_CRI=crio nix run --impure github:Lillecarl/KEP5474#kep-5474
     KEP5474_CRI=crio nix run --impure --file . test.driver -- --out ./out
 
+A pure evaluation is announced in the run itself (`pure evaluation: the
+environment was not read`), because the wrong alternative -- setting the
+variable, forgetting `--impure`, and silently testing containerd -- is
+the quiet way to waste an afternoon.
+
 `--break-on-failure` (driver flag) pauses the run with the guests up;
 `nix run --file . test.driver -- --help` lists the rest.
+
+## Pointing the sources elsewhere
+
+The three PR sources are arguments, pinned to the commits the tests were
+written against.  Three ways to repoint one, best first:
+
+**Flake input.**  Each source is a flake input; `nix flake lock` records
+whatever commit it fetched, so the pin survives a rebase and a colleague:
+
+    nix flake lock --override-input kubernetes-src \
+      "git+https://github.com/you/kubernetes?rev=<sha>"
+    nix run .#kep-5474 -- --out ./out
+
+Edit the input URL in `flake.nix` for something you expect to keep.  The
+inputs use `git+https` with `flake = false` -- a git fetch, so the
+revision the packages stamp into their version strings travels with the
+tree; `github:` tarball fetches would lose it.
+
+**Import argument.**  Without a flake, pass the source to the entry:
+
+    nix build --impure --file . test --option ... # or, in Nix:
+    import ./default.nix {
+      containerdSrc = pkgs.fetchFromGitHub {
+        owner = "containerd"; repo = "containerd";
+        rev = "<some other commit>"; hash = "<sha256>";
+      };
+    }
+
+`null` -- the argument's default -- keeps `infra/default.nix`'s pin.
+
+**Local checkout.**  Any of those arguments takes a plain path; the
+tree is used as it is, dirt included.  A checkout has no git revision,
+so the package version strings fall back to `local` (containerd reports
+`v2.3.5` with `REVISION=local`):
+
+    import ./default.nix { kubernetesSrc = /home/me/kubernetes; }
+
+A source swap rebuilds that package from scratch -- Kubernetes is a
+long Go build -- and the suite is honest about nothing else changing.
 
 ## The evidence
 
