@@ -21,7 +21,9 @@ async def test(vms: Machines) -> None:
     for name, command in (
         ("events", "get events --all-namespaces --sort-by=.lastTimestamp"),
         ("pods", "get pods --all-namespaces --output wide"),
+        ("pods-full", "get pods --all-namespaces --output yaml"),
         ("nodes", "get nodes --output wide"),
+        ("node", "get node cp --output yaml"),
         ("declared", "get node cp --output jsonpath={.status.declaredFeatures}"),
     ):
         rc, out = await cp.execute(f"kubectl {command}", timeout=120)
@@ -35,12 +37,29 @@ async def test(vms: Machines) -> None:
     )
     (report / "cgroup-limits.txt").write_text(tree[1])
 
+    # The host facts the KEP's own preconditions are about: which kernel
+    # mounted the hierarchy, with which options, which controllers exist,
+    # and which version of which runtime is on the node.  A reader who
+    # wants to believe the delegation results can check these against
+    # their own node first.
+    env = await cp.succeed(
+        "uname -a; "
+        "grep cgroup2 /proc/self/mountinfo; "
+        "cat /sys/fs/cgroup/cgroup.controllers 2>/dev/null; "
+        f"{'crio version 2>/dev/null || ' if vms.settings['cri'] == 'crio' else ''}"
+        "containerd --version; "
+        "kubelet --version"
+    )
+    (report / "host.txt").write_text(env)
+
     # The two nodes' declared features, as a small table for the record.
     node = await get_json(cp, "get node cp")
     lines = [
         f"kubernetes   {vms.settings['kubernetesVersion']}",
         f"cri          {vms.settings['cri']}",
         f"declared     {', '.join(node['status'].get('declaredFeatures', []))}",
+        "evidence     ../evidence/evidence.jsonl: every manifest applied"
+        " and every command run, with its result",
     ]
     (report / "summary.txt").write_text("\n".join(lines) + "\n")
     print("[kep-5474] report: " + str(report), flush=True)
