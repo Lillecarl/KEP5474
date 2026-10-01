@@ -18,6 +18,7 @@ async def test(vms: Machines) -> None:
 
     for name, command in (
         ("pods.txt", "kubectl get pods --all-namespaces --output wide"),
+        ("pods-full.txt", "kubectl get pods --all-namespaces --output yaml"),
         ("nixos.yaml", "kubectl get pod nixos --output yaml"),
         (
             "nixos-events.txt",
@@ -35,6 +36,11 @@ async def test(vms: Machines) -> None:
         ("images.txt", "ctr --namespace k8s.io images ls"),
         ("load-images.txt", "journalctl -u k8s-load-images.service --no-pager"),
         ("describe-node.txt", "kubectl describe node"),
+        (
+            "host.txt",
+            "uname -a; grep cgroup2 /proc/self/mountinfo;"
+            " cat /sys/fs/cgroup/cgroup.controllers; containerd --version",
+        ),
     ):
         code, text = await cp.execute(command)
         (out / name).write_text(text)
