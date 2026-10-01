@@ -1,2 +1,4 @@
-result*
-out
+run.log
+out/
+result
+result-1
