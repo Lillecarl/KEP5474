@@ -1,8 +1,11 @@
 """What the KEP-5474 phases and checks share.
 
 On the `pythonPath` of the test, so `phases/cluster.py`, `phases/report.py`
-and everything under `phases/checks/` import it. Nothing here is specific to
-one check; it is the pod, exec and cgroup plumbing the checks all want.
+and everything under `phases/checks/` import it.  The pod, exec and cgroup
+plumbing the checks all want lives in `infra/helpers/kube.py`, shared with
+the `nixos-in-pod` test; this module keeps what is specific to this test
+-- the cgroup probes, the manifest builder, the PSS namespaces -- and
+re-exports the shared plumbing so a phase imports one name.
 """
 
 from __future__ import annotations
@@ -10,7 +13,18 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from vivarium_runner import Machine
-from vivarium_runner.cluster import get_json, until, wait_for_pods
+from vivarium_runner.cluster import get_json
+from vivarium_runner.cluster import wait_for_pods  # re-exported
+
+from kube import (
+    NAMESPACE,  # noqa: F401 -- re-exported
+    apply,  # noqa: F401 -- re-exported
+    delete,  # noqa: F401 -- re-exported
+    exec_sh,  # noqa: F401 -- re-exported
+    pod_object,  # noqa: F401 -- re-exported
+    running,  # noqa: F401 -- re-exported
+    shell_quote,  # noqa: F401 -- re-exported
+)
 
 if TYPE_CHECKING:
     from vivarium_runner import Machines
@@ -99,62 +113,6 @@ def pod(
     return head + spec + extra_spec
 
 
-async def apply(cp: Machine, manifest: str) -> None:
-    await cp.succeed(
-        f"cat <<'EOF' | kubectl apply --filename -\n{manifest}\nEOF", timeout=180
-    )
-
-
-async def running(cp: Machine, name: str, namespace: str = "default") -> None:
-    await wait_for_pods(
-        cp, f"--field-selector metadata.name={name}", namespace=namespace
-    )
-
-
-async def wait_phase(
-    cp: Machine, name: str, phase: str, timeout: int = 180, namespace: str = "default"
-) -> str:
-    """Poll until the pod's phase is *phase*; returns the last one seen."""
-
-    async def check() -> tuple[bool, str]:
-        out = await cp.succeed(
-            f"kubectl get pod {name} --namespace {namespace}"
-            " --output jsonpath='{.status.phase}'"
-        )
-        return out.strip() == phase, out.strip() or "(no phase yet)"
-
-    return await until(f"pod {name} to be {phase}", check, timeout, cp)
-
-
-async def delete(cp: Machine, name: str, namespace: str = "default") -> None:
-    await cp.execute(
-        f"kubectl delete pod {name} --namespace {namespace}"
-        " --ignore-not-found --wait=false",
-        timeout=60,
-    )
-
-
-async def exec_sh(
-    cp: Machine,
-    name: str,
-    script: str,
-    *,
-    container: str | None = None,
-    namespace: str = "default",
-) -> tuple[int, str]:
-    target = f" -c {container}" if container is not None else ""
-    return await cp.execute(
-        f"kubectl exec {name} --namespace {namespace}{target}"
-        f" -- sh -c {shell_quote(script)}",
-        timeout=180,
-    )
-
-
-def shell_quote(text: str) -> str:
-    """Single-quote for the guest's sh; no shell features of ours."""
-    return "'" + text.replace("'", "'\\''") + "'"
-
-
 async def pod_cgroup_dir(cp: Machine, name: str) -> str:
     """The pod's cgroup v2 directory on the node, by its UID.
 
@@ -162,8 +120,8 @@ async def pod_cgroup_dir(cp: Machine, name: str) -> str:
     underscores; the QoS class in the middle is burstable or besteffort,
     so the UID is what identifies it.
     """
-    pod_object = await get_json(cp, f"get pod {name}")
-    key = pod_object["metadata"]["uid"].replace("-", "_")
+    pod = await get_json(cp, f"get pod {name}")
+    key = pod["metadata"]["uid"].replace("-", "_")
     out = await cp.succeed(
         f"ls -d /sys/fs/cgroup/kubepods.slice/*pod{key}* 2>/dev/null | head -1"
     )
