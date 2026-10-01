@@ -5,8 +5,12 @@
 
     `nix run github:Lillecarl/KEP5474#kep-5474` runs the cgroup-delegation
     suite on containerd; `nix run github:Lillecarl/KEP5474#nixos-in-pod`
-    boots a full NixOS as a pod.  The knobs resolve from the environment
-    at evaluation, so a CRI-O node is
+    boots a full NixOS as a pod.  `#divergence` runs the pen test:
+    CRI-O on a node without the nsdelegate mount option, where the
+    pre-KEP annotation route is shown letting a root container remove
+    its own memory limit -- the route the KEP field's gate closes.
+    The knobs resolve from the environment at evaluation, so a CRI-O
+    node is
 
         KEP5474_CRI=crio nix run --impure github:Lillecarl/KEP5474#kep-5474
 
@@ -91,12 +95,14 @@
         default = app "kep-5474" file.test.driver;
         kep-5474 = app "kep-5474" file.test.driver;
         nixos-in-pod = app "nixos-in-pod" file.nixos.test.driver;
+        divergence = app "kep-5474-divergence" file.divergence.driver;
       };
 
       packages.${system} = {
         default = file.test.driver;
         kep-5474 = file.test.driver;
         nixos-in-pod = file.nixos.test.driver;
+        divergence = file.divergence.driver;
       };
     };
 }

@@ -36,7 +36,7 @@ plane that runs its own pods. Both containerd and CRI-O are covered.
 
 ## What the suite covers
 
-One node, eleven phases. Each phase's assertion line is printed as it
+One node, twelve phases. Each phase's assertion line is printed as it
 passes and lands in the artifacts:
 
 | phase | what it proves |
@@ -50,13 +50,50 @@ passes and lands in the artifacts:
 | `security` | nsdelegate bounds the writable mount: a container cannot touch its own limits, can delegate to a child it created, and the cgroup namespace is the boundary |
 | `pss` | Pod Security Standards: `restricted` still names `cgroupOptions`+`Writable`; `ReadOnly` and unset are not refused by it; `baseline` admits it |
 | `edges` | the empty object is a no-op; init containers carry the field; `ReadOnly` is refused for a privileged container at admission |
+| `adversarial` | the battery: every write the model denies is asserted denied with its value intact, the v1 escape surface (`release_agent`, `notify_on_release`) invisible, `".."` climbing only out of the mount, and the full delegate flow -- migrate, arm top-down, set a limit -- working |
 | `report` | the evidence dump (below), written even when the run failed |
 
-The second test (`nixos-in-pod/`) is seven phases: `cluster`, `diagnose`
+The second test (`nixos-in-pod/`) is eight phases: `cluster`, `diagnose`
 (what the runtime hands a container), `image` (the KEP is advertised and
 the image imported), `systemd` (PID 1 is systemd and a NixOS unit reached
 multi-user.target), `exec` (login as a NixOS user, `systemctl` serves
-from inside), `report`.
+from inside), `adversarial` (the same battery, in the user-namespace
+regime -- here systemd itself arms `+memory` at the namespace root,
+the delegation working as designed), `report`.
+
+## The pen test
+
+The twelve phases ask what the feature allows when the kernel's
+prerequisite holds. The `divergence` test asks the question the rest
+cannot: what the pre-KEP route allows when the prerequisite does *not*
+hold. The node is CRI-O with the `nsdelegate` mount option taken off;
+`phases/divergence.py` then shows, live:
+
+- the KEP field pod is refused -- containerd and CRI-O both check
+  `nsdelegate` at container creation, as the KEP requires;
+- the annotation pod starts writable on the same node, and its root
+  container **removes its own memory limit** -- the pre-KEP annotation
+  checks nothing, so on a misconfigured node it hands out exactly the
+  power the KEP's gate exists to deny;
+- the pod-scope cap the escape ends at is printed from the host, so
+  the boundary is measured, not assumed;
+- the same annotation under a user namespace is denied -- the owning
+  root is unmapped, which is what saves KEP-127 workloads on such a
+  node.
+
+    nix run github:Lillecarl/KEP5474#divergence
+    nix run --file . divergence.driver -- --out ./out
+
+Two observations from this run are review material for the PRs:
+
+1. CRI-O honours the annotation with no `nsdelegate` check anywhere;
+   the KEP field's own gate is the only thing standing. If the
+   annotation is meant to survive the KEP, it needs the same check.
+2. The kubelet lists `CgroupOptions` in `declaredFeatures` on a node
+   whose hierarchy lacks `nsdelegate`, so the scheduler will route
+   opted-in pods there and the refusal arrives late, at container
+   creation, as `CreateContainerConfigError`. The KEP text has the
+   kubelet check the host prerequisites at startup.
 
 ## Running it
 
@@ -64,11 +101,13 @@ Through the flake, from anywhere:
 
     nix run github:Lillecarl/KEP5474#kep-5474          # containerd
     nix run github:Lillecarl/KEP5474#nixos-in-pod      # the NixOS test
+    nix run github:Lillecarl/KEP5474#divergence        # the pen test
 
 From a checkout, the same thing without a flake:
 
     nix run --file . test.driver -- --out ./out
     nix run --file . nixos.test.driver -- --out ./out
+    nix run --file . divergence.driver -- --out ./out
 
 The knobs are read from the environment when the test is *evaluated*
 -- pure evaluation sees none, so the flake path needs `--impure` to

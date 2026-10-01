@@ -402,9 +402,13 @@ in
           script = ./phases/exec.py;
           after = [ "systemd" ];
         };
+        adversarial = {
+          script = ./phases/adversarial.py;
+          after = [ "exec" ];
+        };
         report = {
           script = ./phases/report.py;
-          after = [ "exec" ];
+          after = [ "adversarial" ];
           always = true;
         };
       };

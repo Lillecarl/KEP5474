@@ -154,6 +154,10 @@ let
   nodeWith =
     {
       cri ? "containerd",
+      # Whether the node's cgroup2 hierarchy is mounted with nsdelegate.
+      # The KEP makes it a hard prerequisite; `false` builds the node the
+      # divergence pen test runs against.
+      nsdelegate ? true,
       extraImages ? [ ],
       resources ? {
         memory = "2560M";
@@ -192,17 +196,19 @@ let
       # no-op. The runc handler is the default_runtime.
       virtualisation.cri-o.settings.crio.runtime.runtimes.runc.allowed_annotations =
         lib.mkIf (cri == "crio") [ "cgroup2-mount-hierarchy-rw.crio.io" ];
-      # The KEP field's CRI-O path refuses to create a writable-cgroup
+      # The KEP field's path refuses to create a writable-cgroup
       # container unless the node's cgroup2 hierarchy is mounted with
-      # nsdelegate (the PR checks and errors).  systemd mounts cgroup2
-      # without it, and a remount cannot add it: the kernel parses
-      # nsdelegate only at the superblock's first mount and ignores the
-      # option on remount -- a remount unit runs, exits 0, and the
-      # option is still absent.  So stage 2 mounts the hierarchy
+      # nsdelegate (both runtimes' PRs check and error).  systemd mounts
+      # cgroup2 without it, and a remount cannot add it: the kernel
+      # parses nsdelegate only at the superblock's first mount and
+      # ignores the option on remount -- a remount unit runs, exits 0,
+      # and the option is still absent.  So stage 2 mounts the hierarchy
       # itself, before systemd has a chance: activation runs after
       # stage 2 mounts /sys and before it execs systemd, and systemd
-      # finds the hierarchy already mounted and keeps it.
-      system.activationScripts."cgroup2-nsdelegate" = lib.mkIf (cri == "crio") {
+      # finds the hierarchy already mounted and keeps it.  The
+      # divergence run (`nsdelegate = false`) skips the mount and gets
+      # the plain hierarchy systemd makes.
+      system.activationScripts."cgroup2-nsdelegate" = lib.mkIf (cri == "crio" && nsdelegate) {
         text = ''
           if ! ${pkgs.util-linux}/bin/mountpoint -q /sys/fs/cgroup; then
             ${pkgs.util-linux}/bin/mount -t cgroup2 -o nsdelegate none /sys/fs/cgroup

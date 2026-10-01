@@ -90,6 +90,7 @@ def pod(
     os_name: str | None = None,
     extra_spec: str = "",
     annotations: dict[str, str] | None = None,
+    host_users: bool | None = None,
 ) -> str:
     head = (
         "apiVersion: v1\n"
@@ -103,6 +104,8 @@ def pod(
             f'    {key}: "{value}"\n' for key, value in annotations.items()
         )
     spec = "spec:\n  restartPolicy: Never\n"
+    if host_users is False:
+        spec += "  hostUsers: false\n"
     if node is not None:
         spec += f"  nodeName: {node}\n"
     if os_name is not None:
@@ -118,7 +121,9 @@ async def pod_cgroup_dir(cp: Machine, name: str) -> str:
 
     The systemd driver names the slice after the pod UID with dashes for
     underscores; the QoS class in the middle is burstable or besteffort,
-    so the UID is what identifies it.
+    so the UID is what identifies it.  A driver that names differently
+    -- a cgroupfs manager, a runtime override -- is caught by the find
+    fallback.
     """
     pod = await get_json(cp, f"get pod {name}")
     key = pod["metadata"]["uid"].replace("-", "_")
@@ -126,6 +131,11 @@ async def pod_cgroup_dir(cp: Machine, name: str) -> str:
         f"ls -d /sys/fs/cgroup/kubepods.slice/*pod{key}* 2>/dev/null | head -1"
     )
     path = out.strip()
+    if not path:
+        out = await cp.succeed(
+            f"find /sys/fs/cgroup -maxdepth 3 -name '*pod{key}*' 2>/dev/null | head -1"
+        )
+        path = out.strip()
     if not path:
         raise AssertionError(f"no cgroup directory for pod {name}")
     return path

@@ -57,8 +57,13 @@ let
   inherit (infra) pkgs' vivariumLib nodeWith;
 
   nodeConfigOf =
-    { cri, ... }:
-    (vivariumLib.mkNode { imports = [ (nodeWith { inherit cri; }) ]; }).config;
+    {
+      cri,
+      nsdelegate ? true,
+    }:
+    (vivariumLib.mkNode {
+      imports = [ (nodeWith { inherit cri nsdelegate; }) ];
+    }).config;
 in
 {
   # The `vivarium` CLI, for `vivarium ctl` against a paused run.
@@ -68,7 +73,8 @@ in
     { config, ... }:
     let
       cri = config.resolved.cri.value;
-      nodeConfig = nodeConfigOf { inherit cri; };
+      nsdelegate = config.resolved.nsdelegate.value != "false";
+      nodeConfig = nodeConfigOf { inherit cri nsdelegate; };
     in
     {
       name = "kep-5474-${cri}";
@@ -91,12 +97,21 @@ in
           default = "uml";
           description = "uml, qemu, or container";
         };
+        nsdelegate = {
+          env = "KEP5474_NSDELEGATE";
+          default = "true";
+          description = "whether the node's cgroup2 hierarchy carries nsdelegate";
+        };
       };
 
-      nodes.cp = nodeWith { inherit cri; };
+      nodes.cp = nodeWith {
+        inherit cri;
+        inherit nsdelegate;
+      };
 
       settings = {
         inherit cri;
+        inherit nsdelegate;
         inherit pureEval;
         inherit (nodeConfig.services.vivarium-k8s) workloadImage;
         kubernetesVersion = pkgs'.kubernetes.version;
@@ -140,9 +155,82 @@ in
           script = ./phases/checks/edges.py;
           after = [ "pss" ];
         };
+        adversarial = {
+          script = ./phases/checks/adversarial.py;
+          after = [ "edges" ];
+        };
         report = {
           script = ./phases/report.py;
-          after = [ "edges" ];
+          after = [ "adversarial" ];
+          always = true;
+        };
+      };
+    }
+  );
+
+  /*
+    The pen test: the same node on CRI-O with the nsdelegate mount
+    option taken off.  The KEP field refuses to start writable
+    containers there -- both runtimes check -- while CRI-O's pre-KEP
+    annotation checks nothing, so an annotated root container removes
+    its own limits.  `phases/divergence.py` runs that difference live.
+    Only cluster, divergence and report run; every other check assumes
+    the nsdelegate premise.
+
+      KEP5474_BACKEND=... nix run --file . divergence.driver -- --out ./out
+  */
+  divergence = vivariumLib.mkTest (
+    { config, ... }:
+    let
+      nodeConfig = nodeConfigOf {
+        cri = "crio";
+        nsdelegate = false;
+      };
+    in
+    {
+      name = "kep-5474-divergence";
+
+      pythonPath = [
+        ./helpers
+        ./infra/helpers
+      ];
+
+      backend = config.resolved.backend.value;
+
+      knobs = {
+        backend = {
+          env = "KEP5474_BACKEND";
+          default = "uml";
+          description = "uml, qemu, or container";
+        };
+      };
+
+      nodes.cp = nodeWith {
+        cri = "crio";
+        nsdelegate = false;
+      };
+
+      settings = {
+        cri = "crio";
+        nsdelegate = false;
+        inherit pureEval;
+        inherit (nodeConfig.services.vivarium-k8s) workloadImage;
+        kubernetesVersion = pkgs'.kubernetes.version;
+        featureName = "CgroupOptions";
+      };
+
+      phases = {
+        cluster = {
+          script = ./phases/cluster.py;
+          after = [ "boot" ];
+        };
+        divergence = {
+          script = ./phases/divergence.py;
+          after = [ "cluster" ];
+        };
+        report = {
+          script = ./phases/report.py;
+          after = [ "divergence" ];
           always = true;
         };
       };
