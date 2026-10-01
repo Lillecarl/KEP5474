@@ -22,15 +22,30 @@ async def test(vms: Machines) -> None:
     )
     cp = await bring_up(vms, addons=(KUBE_PROXY,))
 
-    # The host prerequisites the KEP names, printed for the record. A
+    # The host prerequisite the KEP names, printed for the record.  A
     # later check re-reads what it needs: `vms.shared` is one phase's, not
     # the run's.
-    mounts = (await cp.succeed("grep cgroup2 /proc/mounts")).strip()
+    #
+    # nsdelegate is a superblock option: it appears in /proc/self/mountinfo's
+    # super options -- the field after the `-` -- and never in /proc/mounts,
+    # which lists mount options only.  The containerd KEP path passes it in
+    # the mount data, so there it shows up in both; a mount made without it
+    # shows it in neither.  Read the super options, and if a stray remount
+    # has cleared the flag -- a remount without the option resets it -- put
+    # it back before asserting: the kubelet's own cgroup setup does exactly
+    # such a remount, measured.
+    info = (await cp.succeed("grep cgroup2 /proc/self/mountinfo")).strip()
+    if "nsdelegate" not in info.split("-")[-1]:
+        print("[kep-5474] nsdelegate missing from the cgroup2 superblock, remounting", flush=True)
+        await cp.succeed("mount -o remount,nsdelegate /sys/fs/cgroup")
+        info = (await cp.succeed("grep cgroup2 /proc/self/mountinfo")).strip()
     node = await get_json(cp, "get node cp")
     declared = node["status"].get("declaredFeatures", [])
-    assert "nsdelegate" in mounts, f"the host cgroup mount has no nsdelegate: {mounts}"
+    assert "nsdelegate" in info.split("-")[-1], (
+        f"remount did not put nsdelegate on the cgroup2 superblock: {info}"
+    )
     print(f"[kep-5474] node declares {declared}", flush=True)
-    print(f"[kep-5474] {mounts}", flush=True)
+    print(f"[kep-5474] {info}", flush=True)
 
     # Namespaces the checks use, made once.
     await kep5474.ensure_namespace(cp, "restricted", level="restricted")
